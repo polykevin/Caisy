@@ -1,0 +1,2 @@
+#define Caisy_VERSION_MAJOR @Caisy_VERSION_MAJOR@
+#define Caisy_VERSION_MINOR @Caisy_VERSION_MINOR@
