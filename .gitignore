@@ -47,9 +47,6 @@ _deps
 # Build Files
 Build/
 
-# External Submodules
-external/
-
 .cache/
 
 [Bb][Uu][Ii][Ll][Dd]/
