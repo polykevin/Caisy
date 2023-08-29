@@ -1,21 +1,17 @@
 cmake_minimum_required(VERSION 3.23.2)
 
-project(Caisy VERSION 0.1)
-add_subdirectory(include/)
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
+    message(FATAL_ERROR "Do not build in-source. Please remove CMakeCache.txt and the CMakeFiles/ directory. Then build out-of-source.")
+endif()
 
-add_executable(
-  ${PROJECT_NAME}
-  src/main.cpp
-  src/EBO.cpp
-  src/shaderClass.cpp
-  src/stb_image.cpp
-  src/text.cpp
-  src/tiles.cpp
-  src/update.cpp
-  src/VAO.cpp
-  src/VBO.cpp
-  src/window.cpp
-  src/glad.c)
+project(
+    "Caisy" 
+    VERSION 0.1 
+    LANGUAGES C CXX)
+
+add_subdirectory(libs/)
+
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 # get glfw from github
 find_package(Git QUIET)
@@ -38,50 +34,54 @@ if(GIT_FOUND AND EXISTS "${PROJECT_SOURCE_DIR}/.git")
 endif()
 
 # CHECK ALL THE SUBMODULES
-if(NOT EXISTS "${PROJECT_SOURCE_DIR}/external/glfw/CMakeLists.txt")
+if(NOT EXISTS "${PROJECT_SOURCE_DIR}/libs/glfw/CMakeLists.txt")
   message(
     FATAL_ERROR
       "The glfw submodules was not downloaded! GIT_SUBMODULE was turned off or failed. Please update submodules and try again."
   )
 endif()
 
-add_subdirectory(external/glfw)
+set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 
-target_include_directories(
-  ${PROJECT_NAME}
-  PUBLIC include/
-   external/glfw/include
-   include/glad/)
+add_executable(
+    ${PROJECT_NAME}
+    src/main.cpp
+    src/App/Application.cpp
+    src/App/Application.h
+    src/TextEditor/TextEditor.cpp
+    src/TextEditor/TextEditor.h
+    src/Renderer/Shader/Shader.cpp
+    src/Renderer/Shader/Shader.h
+    src/Renderer/VBO/VBO.cpp
+    src/Renderer/VBO/VBO.h
+    src/Renderer/VAO/VAO.cpp
+    src/Renderer/VAO/VAO.h
+    src/Renderer/EBO/EBO.cpp
+    src/Renderer/EBO/EBO.h
+    src/Events/Event.h
+    src/Events/ApplicationEvent.h
+    src/Events/KeyEvent.h
+    src/Events/MouseEvent.h
+    src/Events/Input.cpp
+    src/Events/Input.h
+    src/App/WindowClass.h
+    src/App/WindowClass.cpp
+    src/App/Object.h
+    src/App/ObjectStack.h
+    src/App/ObjectStack.cpp
+)
 
-target_link_directories(
-  ${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include/ PUBLIC
-  external/glfw/src)
+target_include_directories(${PROJECT_NAME} PUBLIC libs/freetype/include/ 
+    libs/pango/include/pango-1.0/
+    libs/glib/include/glib-2.0/
+    libs/harfbuzz/include/harfbuzz/
+    libs/icu-windows/include/)
+target_link_directories(${PROJECT_NAME} PUBLIC libs/freetype/include/
+    libs/icu-windows/lib64/
+    libs/pango/lib/
+    libs/glib/lib/
+    libs/harfbuzz/lib/)
 
-target_link_libraries(${PROJECT_NAME} glfw glad freetype)
-
-install(
-  TARGETS ${PROJECT_NAME}
-  CONFIGURATIONS Release
-  DESTINATION bin)
-install(
-  FILES "${PROJECT_SOURCE_DIR}/include/freetype.dll"
-  CONFIGURATIONS Release
-  DESTINATION bin)
-install(
-  FILES "${PROJECT_SOURCE_DIR}/include/glfw3.dll"
-  CONFIGURATIONS Release
-  DESTINATION bin)
-install(
-  FILES "${PROJECT_SOURCE_DIR}/include/ucrtbased.dll"
-  CONFIGURATIONS Release
-  DESTINATION bin)
-install(
-  DIRECTORY "${PROJECT_SOURCE_DIR}/Resources"
-  CONFIGURATIONS Release
-  DESTINATION bin)
-
-include(InstallRequiredSystemLibraries)
-set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/License.txt")
-set(CPACK_PACKAGE_VERSION_MAJOR "${Caisy_VERSION_MAJOR}")
-set(CPACK_PACKAGE_VERSION_MINOR "${Caisy_VERSION_MINOR}")
-include(CPack)
+target_link_libraries(${PROJECT_NAME} PUBLIC glad glfw glm freetype icuuc glib-2.0 gobject-2.0  harfbuzz pango-1.0 pangoft2-1.0)

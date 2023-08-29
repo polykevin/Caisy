@@ -1,0 +1,1 @@
+C:\Programmation\Caisy\libs\freetype\objs\x64\Release Static\freetype.lib

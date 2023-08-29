@@ -1,0 +1,7 @@
+Package: harfbuzz
+Version: 7.1.0
+Depends: freetype, vcpkg-tool-meson
+Architecture: x64-windows
+Multi-Arch: same
+Abi: 3553256488ee586289ad4941a8a9d03dc1382577915063eacc1fd1c9b5e112d9
+Description: HarfBuzz OpenType text shaping engine
