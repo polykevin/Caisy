@@ -125,19 +125,42 @@ bool TextRenderer::OnChar(KeyTypedEvent &e) {
 bool TextRenderer::OnScroll(MouseScrolledEvent &e) {
   m_CameraSpeed = 2800.0f * m_DeltaTime;
   glm::vec3 maxPos = glm::vec3(0.0f, 0.0f, 1.0f);
-  bool top = (m_CameraPos.y > maxPos.y) ? true : false;
+  bool top = (m_CameraPos.y >= maxPos.y) ? true : false;
 
+  if (e.GetYOffset() > 0 && top) {
+    m_CameraPos.y = 0.0;
+    return false;
+  }
   if (e.GetYOffset() > 0 && !top) {
     m_CameraPos += (float)e.GetYOffset() * m_CameraSpeed * m_CameraUp;
+    return false;
   }
   if (e.GetYOffset() < 0) {
     m_CameraPos -= (float)e.GetYOffset() * -1 * m_CameraSpeed * m_CameraUp;
+    return false;
   }
 
   return false;
 }
 
 bool TextRenderer::OnMouse(MouseButtonPressedEvent &e) {
+  if (e.GetMouseButton() == GLFW_MOUSE_BUTTON_LEFT && m_TextMode == true) {
+    double xCpos, yCpos;
+    glfwGetCursorPos(static_cast<GLFWwindow *>(
+                         Application::Get()->GetWindow().GetNativeWindow()),
+                     &xCpos, &yCpos);
+
+    yCpos += (m_CameraPos.y * -1);
+
+    pango_layout_xy_to_index(m_Layout, xCpos * PANGO_SCALE, yCpos * PANGO_SCALE,
+                             &m_Cursor, NULL);
+    std::cout << xCpos << " : x" << '\n';
+    std::cout << yCpos << " : y" << '\n';
+    std::cout << m_CameraPos.y << " : camY" << '\n';
+    std::cout << m_Cursor << '\n';
+    m_CursorMinus = m_Text.length() - m_Cursor;
+  }
+
   if (e.GetMouseButton() == GLFW_MOUSE_BUTTON_LEFT) {
     m_TextMode = true;
   }
@@ -464,8 +487,8 @@ void TextRenderer::RenderText(glm::vec3 color) {
       m_CursorMinus = 0;
     } else {
       m_Cursor = m_Text.length() -
-                 m_CursorMinus; // Position of the cursor, cursorMinus is a var
-                                // to help locate the place
+                 m_CursorMinus; // Position of the cursor, cursorMinus
+                                // is a var to help locate the place
     }
     if (m_Cursor < 0) {
       m_Cursor = 0;
