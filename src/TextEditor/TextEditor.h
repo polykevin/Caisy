@@ -8,6 +8,7 @@
 #include FT_FREETYPE_H
 #include "../App/Object.h"
 #include "../App/WindowClass.h"
+#include "../Events/ApplicationEvent.h"
 #include "../Events/Event.h"
 #include "../Events/KeyEvent.h"
 #include "../Events/MouseEvent.h"
@@ -21,12 +22,6 @@
 #include <vector>
 
 namespace TextEditor {
-
-struct LayoutDimensions {
-  int width;
-  int height;
-};
-
 class TextRenderer : public Object {
 public:
   TextRenderer();
@@ -44,10 +39,11 @@ private:
   bool OnScroll(MouseScrolledEvent &e);
   bool OnChar(KeyTypedEvent &e);
   bool OnMouse(MouseButtonPressedEvent &e);
+  bool OnResize(WindowResizeEvent &e);
 
   void RenderText(glm::vec3 color);
   void ComputeBitmap();
-  void TextBreaking();
+  void CameraFollow();
 
   Shader m_TextShader;
   Shader m_BasicShader;
@@ -65,12 +61,15 @@ private:
   unsigned int *m_Textures;
   unsigned int m_Texture;
   FT_Bitmap m_Bitmap;
-  int m_OldTrailing;
-  int m_Trailing;
-  int m_NewIdx;
+  int m_ControlHeight = m_Height;
+  int m_LayoutWidth = m_Width;
+  int m_LayoutHeight = m_Height;
 
   int m_Cursor = 0;
   int m_CursorMinus = 0;
+
+  int m_Width = 1280;
+  int m_Height = 720;
 
   bool m_TextMode = false;
 
@@ -81,10 +80,5 @@ private:
 
   float m_DeltaTime = 0.0f;
   float m_LastFrame = 0.0f;
-
-  std::vector<std::string> m_History_Z = {};
-  int m_NbReturn_Z = 0;
-  std::vector<std::string> m_History_Y = {};
-  int m_NbReturn_Y = 0;
 };
 } // namespace TextEditor

@@ -7,6 +7,7 @@
 #include "pango/pango-layout.h"
 #include "pango/pango-types.h"
 #include <GLFW/glfw3.h>
+#include <algorithm>
 #include <freetype/ftbitmap.h>
 #include <ft2build.h>
 #include <glm/glm.hpp>
@@ -16,6 +17,7 @@
 #include <pango/pangoft2.h>
 #include <sstream>
 #include <string>
+#include <type_traits>
 #include <unicode/uconfig.h>
 #include <unicode/unistr.h>
 #include <vector>
@@ -27,9 +29,11 @@ namespace TextEditor {
 
 TextRenderer::TextRenderer()
     : m_TextShader("Resources/Shaders/text.shader"),
-      m_BasicShader("Resources/Shaders/basic.shader"), m_VBO(), m_CaretVbo() {
-  glm::mat4 projection =
-      glm::ortho(0.0f, static_cast<float>(1280), 0.0f, static_cast<float>(720));
+      m_BasicShader("Resources/Shaders/basic.shader"), m_VBO(), m_CaretVbo(),
+      m_Width(1280), m_Height(720), m_LayoutWidth(1280), m_LayoutHeight(720),
+      m_ControlHeight(720) {
+  glm::mat4 projection = glm::ortho(0.0f, static_cast<float>(m_Width), 0.0f,
+                                    static_cast<float>(m_Height));
 
   m_BasicShader.Bind();
   m_BasicShader.SetMat4("projection", 1, GL_FALSE, projection);
@@ -92,8 +96,33 @@ void TextRenderer::OnEvent(Event &e) {
   dispatcher.Dispatch<KeyTypedEvent>(BIND_EVENT_FNC(TextRenderer::OnChar));
   dispatcher.Dispatch<MouseButtonPressedEvent>(
       BIND_EVENT_FNC(TextRenderer::OnMouse));
+  dispatcher.Dispatch<WindowResizeEvent>(
+      BIND_EVENT_FNC(TextRenderer::OnResize));
 }
 
+bool TextRenderer::OnResize(WindowResizeEvent &e) {
+  m_Height = e.GetHeight();
+  m_Width = e.GetWidth();
+
+  glm::mat4 projection = glm::ortho(0.0f, static_cast<float>(m_Width), 0.0f,
+                                    static_cast<float>(m_Height));
+
+  m_BasicShader.Bind();
+  m_BasicShader.SetMat4("projection", 1, GL_FALSE, projection);
+
+  m_TextShader.Bind();
+  m_TextShader.SetMat4("projection", 1, GL_FALSE, projection);
+
+  pango_layout_set_width(m_Layout, m_Width * PANGO_SCALE);
+  pango_layout_set_wrap(m_Layout, PANGO_WRAP_WORD_CHAR);
+  pango_layout_context_changed(m_Layout);
+
+  ComputeBitmap();
+
+  return false;
+}
+
+static float bottom = 0;
 bool TextRenderer::OnChar(KeyTypedEvent &e) {
   if (m_TextMode) {
     if (m_Text.length() == 0) {
@@ -118,6 +147,7 @@ bool TextRenderer::OnChar(KeyTypedEvent &e) {
                                               // character (inside the text)
     }
     ComputeBitmap(); // Change the texture
+    CameraFollow();
   }
   return false;
 }
@@ -154,10 +184,6 @@ bool TextRenderer::OnMouse(MouseButtonPressedEvent &e) {
 
     pango_layout_xy_to_index(m_Layout, xCpos * PANGO_SCALE, yCpos * PANGO_SCALE,
                              &m_Cursor, NULL);
-    std::cout << xCpos << " : x" << '\n';
-    std::cout << yCpos << " : y" << '\n';
-    std::cout << m_CameraPos.y << " : camY" << '\n';
-    std::cout << m_Cursor << '\n';
     m_CursorMinus = m_Text.length() - m_Cursor;
   }
 
@@ -184,6 +210,8 @@ bool TextRenderer::OnKey(KeyPressedEvent &e) {
         m_Cursor = m_Text.length() - m_CursorMinus;
       }
       ComputeBitmap(); // Change the texture
+      int difference = (m_CameraPos.y - ((float)m_Height - bottom)) * -1;
+      CameraFollow();
     }
 
     // New Line
@@ -203,6 +231,7 @@ bool TextRenderer::OnKey(KeyPressedEvent &e) {
         m_Text.insert(m_Cursor, "\n");
       }
       ComputeBitmap(); // Change the texture
+      CameraFollow();
     }
 
     // Erase whole word "CTRL + BACKSPACE"
@@ -226,6 +255,8 @@ bool TextRenderer::OnKey(KeyPressedEvent &e) {
       }
       m_Cursor = m_Text.length() - m_CursorMinus; // Update the cursor
       ComputeBitmap();                            // Change the texture
+      int difference = (m_CameraPos.y - ((float)m_Height - bottom)) * -1;
+      CameraFollow();
     }
 
     // CTRL + Z
@@ -264,6 +295,7 @@ bool TextRenderer::OnKey(KeyPressedEvent &e) {
           Application::Get()->GetWindow().GetNativeWindow()));
       m_Text.append(icu::UnicodeString::fromUTF8(icu::StringPiece(clipBoard)));
       ComputeBitmap(); // Change the texture
+      CameraFollow();
     }
 
     // Left Arrow
@@ -376,25 +408,17 @@ bool TextRenderer::OnKey(KeyPressedEvent &e) {
   return false;
 }
 
-static float bottom = 0;
-static int controlHeight = 720;
-static int width = 1280;
-static int height = 720;
-static int texLimit = 0;
-
 void TextRenderer::ComputeBitmap() {
   std::string s;
   m_Text.toUTF8String(s);
   pango_layout_set_text(m_Layout, s.c_str(), -1);
   pango_layout_context_changed(m_Layout);
-  pango_layout_get_pixel_size(m_Layout, &width, &height);
-
-  glGetIntegerv(GL_MAX_TEXTURE_SIZE, &texLimit);
+  pango_layout_get_pixel_size(m_Layout, &m_LayoutWidth, &m_LayoutHeight);
 
   delete[] m_Bitmap.buffer;
 
-  m_Bitmap.rows = height;
-  m_Bitmap.width = width;
+  m_Bitmap.rows = m_LayoutHeight;
+  m_Bitmap.width = m_LayoutWidth;
   m_Bitmap.pitch = (m_Bitmap.width + 3) & ~3;
   m_Bitmap.buffer = new unsigned char[m_Bitmap.pitch * m_Bitmap.rows];
   m_Bitmap.num_grays = 256;
@@ -415,10 +439,27 @@ void TextRenderer::ComputeBitmap() {
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-  if (controlHeight != height) {
-    controlHeight = height;
-    bottom = (float)height;
+  if (m_ControlHeight != m_LayoutHeight) {
+    m_ControlHeight = m_LayoutHeight;
+    bottom = (float)m_LayoutHeight;
   }
+}
+
+void TextRenderer::CameraFollow() {
+  PangoRectangle pos;
+  pango_layout_index_to_pos(m_Layout, m_Cursor, &pos);
+  pango_extents_to_pixels(&pos, NULL);
+
+  int difference = (m_CameraPos.y - ((float)m_Height - pos.y)) * -1;
+
+  if ((float)m_Height - pos.y < m_CameraPos.y)
+    m_CameraPos.y = (float)m_Height - pos.y * 1.3;
+
+  if (difference >= m_Height * 1.05)
+    m_CameraPos.y = (float)m_Height - pos.y * 1.3;
+
+  if (m_CameraPos.y > 0.0f)
+    m_CameraPos.y = 0.0f;
 }
 
 void TextRenderer::Load() {
@@ -436,7 +477,7 @@ void TextRenderer::Load() {
   pango_font_map_load_font(m_FontMap, m_Context, m_FontDesc);
   pango_font_description_free(m_FontDesc);
 
-  pango_layout_set_width(m_Layout, 1280 * PANGO_SCALE);
+  pango_layout_set_width(m_Layout, m_Width * PANGO_SCALE);
   pango_layout_set_wrap(m_Layout, PANGO_WRAP_WORD_CHAR);
 
   glGenTextures(1, &m_Texture);
@@ -453,19 +494,31 @@ void TextRenderer::RenderText(glm::vec3 color) {
 
   float vertices[] = {
       // vec2 Pos ; Vec2 Tex
-      0.0f,         720.0f,
-      0.0f,         0.0f,
-      0.0f,         (720.0f - bottom),
-      0.0f,         1.0f,
-      (float)width, (720.0f - bottom),
-      1.0f,         1.0f,
+      0.0f,
+      (float)m_Height,
+      0.0f,
+      0.0f,
+      0.0f,
+      ((float)m_Height - bottom),
+      0.0f,
+      1.0f,
+      (float)m_LayoutWidth,
+      ((float)m_Height - bottom),
+      1.0f,
+      1.0f,
 
-      0.0f,         720.0f,
-      0.0f,         0.0f,
-      (float)width, (720.0f - bottom),
-      1.0f,         1.0f,
-      (float)width, 720.0f,
-      1.0f,         0.0f,
+      0.0f,
+      (float)m_Height,
+      0.0f,
+      0.0f,
+      (float)m_LayoutWidth,
+      ((float)m_Height - bottom),
+      1.0f,
+      1.0f,
+      (float)m_LayoutWidth,
+      (float)m_Height,
+      1.0f,
+      0.0f,
   };
 
   glActiveTexture(GL_TEXTURE0);
@@ -501,22 +554,22 @@ void TextRenderer::RenderText(glm::vec3 color) {
                                &m_CaretRect, NULL);
     pango_extents_to_pixels(&m_CaretRect, NULL);
 
-    m_CaretRect.width += 3.0f;
+    m_CaretRect.width += m_CaretRect.height * 0.05;
 
     float cursorVertices[] = {
         (float)m_CaretRect.x,
-        (float)(720.0f - m_CaretRect.y),
+        (float)((float)m_Height - m_CaretRect.y),
         (float)m_CaretRect.x,
-        (float)(720.0f - m_CaretRect.height - m_CaretRect.y),
+        (float)((float)m_Height - m_CaretRect.height - m_CaretRect.y),
         (float)(m_CaretRect.width + m_CaretRect.x),
-        (float)(720.f - m_CaretRect.height - m_CaretRect.y),
+        (float)((float)m_Height - m_CaretRect.height - m_CaretRect.y),
 
         (float)m_CaretRect.x,
-        (float)(720.0f - m_CaretRect.y),
+        (float)((float)m_Height - m_CaretRect.y),
         (float)(m_CaretRect.width + m_CaretRect.x),
-        (float)(720.0f - m_CaretRect.y),
+        (float)((float)m_Height - m_CaretRect.y),
         (float)(m_CaretRect.width + m_CaretRect.x),
-        (float)(720.0f - m_CaretRect.height - m_CaretRect.y),
+        (float)((float)m_Height - m_CaretRect.height - m_CaretRect.y),
     };
 
     glDisable(GL_CULL_FACE);
